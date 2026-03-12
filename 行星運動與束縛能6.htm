@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="zh-TW">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>重力軌道三態 (精準修正版)</title>
+  <style>
+        body {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 20px;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #e2e8f0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            text-align: center;
+            width: 100%;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            margin: 0 0 15px 0;
+            background: linear-gradient(90deg, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 20px rgba(56, 189, 248, 0.3);
+        }
+
+        .animation-container {
+            position: relative;
+            width: 100%;
+            height: 500px;
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+            border: 1px solid #334155;
+            border-radius: 16px;
+            margin-bottom: 15px;
+            overflow: hidden;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+        }
+
+        #starCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; opacity: 0.7; }
+        #trailCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+
+        .planet {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background: radial-gradient(circle at 35% 35%, #f97316, #c2410c);
+            border-radius: 50%;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 40px rgba(249, 115, 22, 0.4);
+            z-index: 10;
+        }
+
+        .test-object {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: #38bdf8;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 15px #38bdf8;
+            z-index: 20;
+        }
+
+        #arrow {
+            position: absolute;
+            height: 2px;
+            background: rgba(250, 204, 21, 0.9);
+            transform-origin: 0 50%;
+            z-index: 15;
+            display: none;
+        }
+        #arrow::after {
+            content: ''; position: absolute; right: 0; top: -3px;
+            border: 4px solid transparent; border-left-color: rgba(250, 204, 21, 0.9);
+        }
+
+        .state-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .state-btn {
+            padding: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.95rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+        }
+        .state-btn small { font-size: 0.75rem; opacity: 0.7; margin-top: 4px; }
+        
+        .btn-bound { background: rgba(34, 197, 94, 0.15); border-color: rgba(34, 197, 94, 0.4); color: #86efac; }
+        .btn-bound:hover { background: rgba(34, 197, 94, 0.3); transform: translateY(-2px); }
+        
+        .btn-critical { background: rgba(234, 179, 8, 0.15); border-color: rgba(234, 179, 8, 0.4); color: #fde047; }
+        .btn-critical:hover { background: rgba(234, 179, 8, 0.3); transform: translateY(-2px); }
+        
+        .btn-hyper { background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.4); color: #fca5a5; }
+        .btn-hyper:hover { background: rgba(239, 68, 68, 0.3); transform: translateY(-2px); }
+
+        .controls-wrapper {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 800px) { .controls-wrapper { grid-template-columns: 1fr; } }
+
+        .controls {
+            background: rgba(30, 41, 59, 0.7);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .control-group { margin-bottom: 15px; }
+        .control-group label { display: flex; justify-content: space-between; color: #94a3b8; font-size: 0.9rem; margin-bottom: 8px; }
+        
+        .slider { width: 100%; height: 6px; background: #334155; border-radius: 3px; outline: none; appearance: none; }
+        .slider::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #38bdf8; cursor: pointer; transition: 0.2s; }
+        .slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+
+        .info-panel { display: grid; grid-template-rows: repeat(3, 1fr); gap: 10px; }
+        
+        .info-card {
+            background: rgba(15, 23, 42, 0.6);
+            padding: 15px;
+            border-radius: 10px;
+            border-left: 4px solid #475569;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        
+        .info-label { font-size: 0.8rem; color: #94a3b8; }
+        .info-value { font-family: 'Consolas', monospace; font-size: 1.2rem; font-weight: bold; color: #e2e8f0; }
+
+        .card-bound { border-left-color: #4ade80; }
+        .card-critical { border-left-color: #facc15; }
+        .card-hyper { border-left-color: #f87171; }
+
+        .main-action { display: flex; gap: 10px; margin-top: 20px; }
+        .btn { flex: 1; padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; transition: 0.2s; }
+        .btn-start { background: #0ea5e9; }
+        .btn-start:hover { background: #0284c7; }
+        .btn-reset { background: #475569; }
+        .btn-reset:hover { background: #334155; }
+    </style>
+ </head>
+ <body>
+  <main class="container">
+   <h1>重力軌道三態 (精準修正版)</h1>
+   
+   <div class="animation-container" id="animationContainer">
+    <canvas id="starCanvas"></canvas>
+    <canvas id="trailCanvas"></canvas>
+    <div class="planet" id="planet"></div>
+    <div id="arrow"></div>
+    <div class="test-object" id="testObject"></div>
+   </div>
+
+   <div class="state-buttons">
+       <button class="state-btn btn-bound" id="btnBound">
+           1. 束縛態 (Bound)
+           <small>圓形/橢圓</small>
+       </button>
+       <button class="state-btn btn-critical" id="btnCritical">
+           2. 臨界態 (Critical)
+           <small>拋物線 (脫離速度)</small>
+       </button>
+       <button class="state-btn btn-hyper" id="btnHyper">
+           3. 散射態 (Scattering)
+           <small>雙曲線 (高速脫離)</small>
+       </button>
+   </div>
+
+   <div class="controls-wrapper">
+       <div class="controls">
+            <div class="control-group">
+                <label><span>行星質量 (M)</span> <span id="valMass">--</span></label>
+                <input type="range" class="slider" id="slMass" min="1" max="10" step="0.1" value="5">
+            </div>
+            <div class="control-group">
+                <label><span>初始距離 (r)</span> <span id="valDist">--</span></label>
+                <input type="range" class="slider" id="slDist" min="80" max="220" step="1" value="140">
+            </div>
+            <div class="control-group">
+                <label><span>初始速度 (v)</span> <span id="valVel">--</span></label>
+                <input type="range" class="slider" id="slVel" min="0" max="15" step="0.05" value="4">
+            </div>
+            <div class="main-action">
+                <button class="btn btn-start" id="btnStart">開始模擬</button>
+                <button class="btn btn-reset" id="btnReset">重置位置</button>
+            </div>
+       </div>
+
+       <div class="info-panel">
+           <div class="info-card" id="cardState">
+               <div class="info-label">當前物理狀態</div>
+               <div class="info-value" id="dispState">--</div>
+           </div>
+           <div class="info-card">
+               <div class="info-label">總機械能 (E)</div>
+               <div class="info-value" id="dispEnergy">--</div>
+           </div>
+           <div class="info-card">
+               <div class="info-label">脫離速度 (v_esc)</div>
+               <div class="info-value" id="dispVesc">--</div>
+           </div>
+       </div>
+   </div>
+
+  </main>
+
+  <script>
+        // --- 參數 ---
+        const G = 6.674e-11; 
+        const SCALE = 1e6; 
+        const TIME_STEP = 60; 
+        const STEPS_PER_FRAME = 2; 
+
+        // DOM
+        const el = {
+            container: document.getElementById('animationContainer'),
+            trailCanvas: document.getElementById('trailCanvas'),
+            starCanvas: document.getElementById('starCanvas'),
+            planet: document.getElementById('planet'),
+            obj: document.getElementById('testObject'),
+            arrow: document.getElementById('arrow'),
+            slMass: document.getElementById('slMass'),
+            slDist: document.getElementById('slDist'),
+            slVel: document.getElementById('slVel'),
+            valMass: document.getElementById('valMass'),
+            valDist: document.getElementById('valDist'),
+            valVel: document.getElementById('valVel'),
+            dispState: document.getElementById('dispState'),
+            dispEnergy: document.getElementById('dispEnergy'),
+            dispVesc: document.getElementById('dispVesc'),
+            cardState: document.getElementById('cardState'),
+            btnStart: document.getElementById('btnStart'),
+            btnReset: document.getElementById('btnReset'),
+            btnBound: document.getElementById('btnBound'),
+            btnCritical: document.getElementById('btnCritical'),
+            btnHyper: document.getElementById('btnHyper')
+        };
+
+        const ctx = el.trailCanvas.getContext('2d');
+        const starCtx = el.starCanvas.getContext('2d');
+        let centerX, centerY;
+        let state = { running: false, x: 0, y: 0, vx: 0, vy: 0, ax: 0, ay: 0, trail: [], animId: null };
+
+        function init() {
+            resize();
+            drawStars();
+            resetSim();
+            window.addEventListener('resize', () => { resize(); drawStars(); });
+        }
+
+        function resize() {
+            const rect = el.container.getBoundingClientRect();
+            el.trailCanvas.width = rect.width;
+            el.trailCanvas.height = rect.height;
+            el.starCanvas.width = rect.width;
+            el.starCanvas.height = rect.height;
+            centerX = rect.width / 2;
+            centerY = rect.height / 2;
+            if(!state.running) resetSim();
+        }
+
+        function drawStars() {
+            const w = el.starCanvas.width, h = el.starCanvas.height;
+            starCtx.clearRect(0,0,w,h);
+            starCtx.fillStyle = '#FFF';
+            for(let i=0; i<100; i++) {
+                starCtx.globalAlpha = Math.random() * 0.8 + 0.1;
+                starCtx.beginPath();
+                starCtx.arc(Math.random()*w, Math.random()*h, Math.random()*1.5, 0, Math.PI*2);
+                starCtx.fill();
+            }
+        }
+
+        // --- 核心 ---
+
+        function resetSim() {
+            state.running = false;
+            cancelAnimationFrame(state.animId);
+            
+            const r = parseFloat(el.slDist.value);
+            state.x = r; 
+            state.y = 0;
+            state.vx = 0; state.vy = 0;
+            state.trail = [];
+            
+            el.btnStart.textContent = "開始模擬";
+            el.btnStart.classList.remove('btn-reset');
+            el.btnStart.classList.add('btn-start');
+
+            ctx.clearRect(0, 0, el.trailCanvas.width, el.trailCanvas.height);
+            
+            updateVisuals();
+            updateData(); // 這裡會重算並顯示狀態
+            drawOrbitGuide(r);
+        }
+
+        function toggleSim() {
+            if(state.running) {
+                state.running = false;
+                el.btnStart.textContent = "繼續";
+            } else {
+                // 從靜止開始，讀取當前滑桿速度
+                if(state.vx === 0 && state.vy === 0) {
+                    const v = parseFloat(el.slVel.value) * 1000;
+                    state.vx = 0;
+                    state.vy = -v; 
+                    
+                    const M = parseFloat(el.slMass.value) * 1e24;
+                    const r_m = state.x * SCALE;
+                    state.ax = -(G * M) / (r_m * r_m);
+                    state.ay = 0;
+                }
+                state.running = true;
+                el.btnStart.textContent = "暫停";
+                loop();
+            }
+        }
+
+        function loop() {
+            if(!state.running) return;
+            
+            const M = parseFloat(el.slMass.value) * 1e24;
+            
+            // Verlet Integration
+            for(let i=0; i<STEPS_PER_FRAME; i++) {
+                let half_vx = state.vx + 0.5 * state.ax * TIME_STEP;
+                let half_vy = state.vy + 0.5 * state.ay * TIME_STEP;
+                state.x += (half_vx * TIME_STEP) / SCALE;
+                state.y += (half_vy * TIME_STEP) / SCALE;
+                
+                const r2 = state.x*state.x + state.y*state.y;
+                const r = Math.sqrt(r2);
+                
+                if(r < 25) { state.running = false; el.btnStart.textContent = "已墜毀"; return; }
+                if(r > 3000) { state.running = false; el.btnStart.textContent = "已遠離"; return; }
+
+                const r_m = r * SCALE;
+                const a_mag = (G * M) / (r_m * r_m);
+                const new_ax = -a_mag * (state.x / r);
+                const new_ay = -a_mag * (state.y / r);
+                state.vx = half_vx + 0.5 * new_ax * TIME_STEP;
+                state.vy = half_vy + 0.5 * new_ay * TIME_STEP;
+                state.ax = new_ax;
+                state.ay = new_ay;
+            }
+            
+            // 軌跡
+            if(state.trail.length === 0 || 
+               Math.abs(state.x - state.trail[state.trail.length-1].x) > 2 || 
+               Math.abs(state.y - state.trail[state.trail.length-1].y) > 2) {
+                state.trail.push({x: state.x, y: state.y});
+                if(state.trail.length > 800) state.trail.shift();
+            }
+            
+            updateVisuals();
+            updateData(); 
+            state.animId = requestAnimationFrame(loop);
+        }
+
+        // --- 視覺與數據 ---
+
+        function updateVisuals() {
+            el.obj.style.left = (centerX + state.x) + 'px';
+            el.obj.style.top = (centerY + state.y) + 'px';
+            
+            if(!state.running) {
+                const v = parseFloat(el.slVel.value);
+                const len = Math.min(v * 8, 100);
+                el.arrow.style.display = 'block';
+                el.arrow.style.left = (centerX + state.x) + 'px';
+                el.arrow.style.top = (centerY + state.y) + 'px';
+                el.arrow.style.width = len + 'px';
+                el.arrow.style.transform = 'rotate(-90deg)';
+            } else {
+                el.arrow.style.display = 'none';
+            }
+
+            ctx.clearRect(0,0, el.trailCanvas.width, el.trailCanvas.height);
+            if(state.trail.length > 1) {
+                ctx.lineWidth = 2;
+                ctx.lineCap = 'round';
+                for(let i=0; i<state.trail.length-1; i++) {
+                    const alpha = i / state.trail.length;
+                    ctx.beginPath();
+                    ctx.strokeStyle = `rgba(56, 189, 248, ${alpha})`;
+                    ctx.moveTo(centerX + state.trail[i].x, centerY + state.trail[i].y);
+                    ctx.lineTo(centerX + state.trail[i+1].x, centerY + state.trail[i+1].y);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        function updateData() {
+            const M = parseFloat(el.slMass.value) * 1e24;
+            let r_m, v_ms;
+
+            // 判斷是用「即時速度」還是「滑桿速度」
+            if(state.running) {
+                r_m = Math.sqrt(state.x**2 + state.y**2) * SCALE;
+                v_ms = Math.sqrt(state.vx**2 + state.vy**2);
+            } else {
+                // 如果靜止，使用滑桿數值
+                r_m = parseFloat(el.slDist.value) * SCALE;
+                v_ms = parseFloat(el.slVel.value) * 1000;
+            }
+
+            const U = -(G * M) / r_m; 
+            const K = 0.5 * v_ms * v_ms; 
+            const E = K + U;
+            const v_esc = Math.sqrt(2 * G * M / r_m);
+
+            el.valMass.textContent = parseFloat(el.slMass.value).toFixed(1) + " × 10²⁴ kg";
+            el.valDist.textContent = (r_m/SCALE).toFixed(0) + " px";
+            el.valVel.textContent = (v_ms/1000).toFixed(2) + " km/s";
+            el.dispVesc.textContent = (v_esc/1000).toFixed(2) + " km/s";
+            el.dispEnergy.textContent = (E/1e6).toFixed(2) + " MJ/kg";
+
+            // --- 修正後的狀態判定邏輯 ---
+            // 寬容度設為動能的 2% 或固定小數值，避免 -0.0001 變成 Bound
+            const tolerance = 0.05 * Math.abs(U); 
+
+            el.cardState.className = "info-card";
+            el.dispState.style.color = "#fff";
+
+            // 邏輯修改：
+            // 1. 只有當 E < -tolerance (明顯小於0) 時才算束縛
+            // 2. 否則在 0 附近都算臨界
+            // 3. E > tolerance 算散射
+            
+            if (E < -tolerance) {
+                el.dispState.textContent = "束縛態 (Bound)";
+                el.dispState.style.color = "#4ade80"; // Green
+                el.cardState.classList.add("card-bound");
+            } else if (E > tolerance) {
+                el.dispState.textContent = "散射態 (Scattering)";
+                el.dispState.style.color = "#f87171"; // Red
+                el.cardState.classList.add("card-hyper");
+            } else {
+                // 在 -tolerance 到 +tolerance 之間，包含 0
+                el.dispState.textContent = "臨界態 (Critical)";
+                el.dispState.style.color = "#facc15"; // Yellow
+                el.cardState.classList.add("card-critical");
+            }
+        }
+
+        function drawOrbitGuide(r) {
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.setLineDash([4,4]);
+            ctx.arc(centerX, centerY, r, 0, Math.PI*2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // --- 事件 ---
+        // 修正重點：任何滑桿變動都觸發 resetSim，確保「所見即所得」
+        el.slMass.addEventListener('input', () => { resetSim(); });
+        el.slDist.addEventListener('input', () => { resetSim(); });
+        el.slVel.addEventListener('input', () => { 
+            // 這裡直接 resetSim，這解決了「暫停時拉動滑桿，繼續後速度沒變」的問題
+            resetSim(); 
+        });
+
+        // 按鈕邏輯
+        el.btnBound.addEventListener('click', () => {
+            const M = parseFloat(el.slMass.value) * 1e24;
+            const r = parseFloat(el.slDist.value) * SCALE;
+            const v = Math.sqrt(G * M / r) / 1000; 
+            el.slVel.value = v;
+            resetSim();
+        });
+
+        el.btnCritical.addEventListener('click', () => {
+            const M = parseFloat(el.slMass.value) * 1e24;
+            const r = parseFloat(el.slDist.value) * SCALE;
+            const v = Math.sqrt(2 * G * M / r) / 1000;
+            el.slVel.value = v;
+            resetSim();
+        });
+
+        el.btnHyper.addEventListener('click', () => {
+            const M = parseFloat(el.slMass.value) * 1e24;
+            const r = parseFloat(el.slDist.value) * SCALE;
+            const v = Math.sqrt(2 * G * M / r) / 1000 * 1.4;
+            el.slVel.value = v;
+            resetSim();
+        });
+        
+        el.btnStart.addEventListener('click', toggleSim);
+        el.btnReset.addEventListener('click', resetSim);
+
+        init();
+  </script>
+ </body>
+</html>
